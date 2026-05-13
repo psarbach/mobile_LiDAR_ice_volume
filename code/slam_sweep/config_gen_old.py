@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import warnings
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -54,7 +53,6 @@ PARAM_MAP: dict[str, tuple[str, str]] = {
     "sub_mapping.min_implicit_loop_overlap": ("config_sub_mapping_gpu.json", "min_implicit_loop_overlap"),
     "sub_mapping.submap_voxel_resolution":   ("config_sub_mapping_gpu.json", "submap_voxel_resolution"),
     "sub_mapping.keyframe_voxel_resolution": ("config_sub_mapping_gpu.json", "keyframe_voxel_resolution"),
-    "sub_mapping.enable_optimization":       ("config_sub_mapping_gpu.json", "enable_optimization"),
 
     # Global mapping
     "global_mapping.submap_voxel_resolution":   ("config_global_mapping_gpu.json", "submap_voxel_resolution"),
@@ -75,35 +73,6 @@ def _set_dotted(d: dict, dotted_key: str, value: Any) -> None:
     d[keys[-1]] = value
 
 
-def flatten_params(obj: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
-    """
-    Recursively flatten a possibly-nested mapping into dotted keys.
-
-    W&B treats dots in sweep parameter names as nesting separators, so a
-    sweep declaring `frontend.voxel_resolution` delivers it back via
-    `wandb.config` as `{"frontend": {"voxel_resolution": 0.5}}`. This
-    helper restores the flat dotted form that PARAM_MAP uses as its keys.
-
-    Both forms are handled (so we tolerate any future W&B SDK change):
-      {"frontend": {"voxel_resolution": 0.5}}    -> {"frontend.voxel_resolution": 0.5}
-      {"frontend.voxel_resolution": 0.5}         -> {"frontend.voxel_resolution": 0.5}
-
-    Keys that already contain dots are treated as fully-qualified leaves
-    and are NOT recursed into, so existing flat keys round-trip cleanly.
-    """
-    out: dict[str, Any] = {}
-    for k, v in obj.items():
-        # Skip internal W&B metadata.
-        if k.startswith("_"):
-            continue
-        full = f"{prefix}{k}"
-        if isinstance(v, dict) and "." not in k:
-            out.update(flatten_params(v, prefix=f"{full}."))
-        else:
-            out[full] = v
-    return out
-
-
 def materialize_config(
     default_dir: Path,
     target_dir: Path,
@@ -118,15 +87,10 @@ def materialize_config(
     Args:
         default_dir: directory containing GLIM's default config JSONs.
         target_dir:  destination; will be removed and recreated.
-        params:      mapping of parameter names to values. Either flat
-                     dotted form (`{"frontend.voxel_resolution": 0.5}`)
-                     or nested form (`{"frontend": {"voxel_resolution": 0.5}}`)
-                     is accepted — the latter is what W&B delivers via
-                     `wandb.config` because it interprets dots as nesting.
-                     Internal keys starting with `_` are skipped.
-        strict:      if True, raise on any unknown key. Recommended in
-                     production: a silent skip means a sweep can spend
-                     hours patching nothing.
+        params:      flat dict like {"frontend.voxel_resolution": 0.5, ...}.
+                     Keys not in PARAM_MAP are silently skipped (W&B adds
+                     internal metadata keys like _wandb).
+        strict:      if True, raise on any unknown key instead of skipping.
 
     Returns:
         The materialized target_dir (Path).
@@ -140,26 +104,15 @@ def materialize_config(
         shutil.rmtree(target_dir)
     shutil.copytree(default_dir, target_dir)
 
-    flat = flatten_params(params)
-
     # Group patches by file so each JSON is loaded and written exactly once.
     by_file: dict[str, dict[str, Any]] = {}
-    skipped: list[str] = []
-    for flat_key, value in flat.items():
+    for flat_key, value in params.items():
         if flat_key not in PARAM_MAP:
-            skipped.append(flat_key)
+            if strict and not flat_key.startswith("_"):
+                raise KeyError(f"Unknown sweep parameter: {flat_key}")
             continue
         fname, dotted = PARAM_MAP[flat_key]
         by_file.setdefault(fname, {})[dotted] = value
-
-    if skipped:
-        msg = (
-            f"materialize_config: {len(skipped)} parameter(s) not in PARAM_MAP "
-            f"and were not applied: {skipped}. Known keys: {sorted(PARAM_MAP.keys())}"
-        )
-        if strict:
-            raise KeyError(msg)
-        warnings.warn(msg, RuntimeWarning, stacklevel=2)
 
     for fname, leafs in by_file.items():
         path = target_dir / fname
