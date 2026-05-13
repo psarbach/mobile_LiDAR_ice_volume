@@ -1,0 +1,70 @@
+# W&B sweep configuration. Register with: `wandb sweep sweep.yaml`.
+#
+# IMPORTANT: every parameter key here must also exist in
+# slam_sweep/config_gen.py PARAM_MAP, which decides which JSON file +
+# leaf the value is written to.
+#
+# Bayesian (Gaussian-process) search; no early stopping because each
+# trial is expensive and produces only one objective value.
+
+program: agent.py
+command:
+  # ${env} expands to env vars; we omit ${args} so W&B does NOT append
+  # --param=value flags. We read the trial config via wandb.config.
+  - ${env}
+  - python
+  - -m
+  - slam_sweep.agent
+
+method: bayes
+
+metric:
+  name: objective
+  goal: minimize
+
+parameters:
+
+  # --- Frontend (odometry) -----------------------------------------------
+  # See: https://github.com/koide3/glim/blob/master/docs/parameters.md
+
+  # Base VGICP voxel resolution. Outdoor: 0.5–2.0 m, indoor: 0.1–0.25 m.
+  # Mid-360 outdoor mapping typically wants 0.3–1.0 m.
+  frontend.voxel_resolution:
+    distribution: log_uniform_values
+    min: 0.15
+    max: 1.5
+
+  # Maximum corresponding distance for scan matching. Default 2.0 m.
+  frontend.max_correspondence_distance:
+    distribution: uniform
+    min: 1.0
+    max: 4.0
+
+  # Number of keyframes kept in odometry. More → less drift, more cost.
+  frontend.max_num_keyframes:
+    distribution: int_uniform
+    min: 8
+    max: 25
+
+  # Multi-resolution voxel levels.
+  frontend.voxelmap_levels:
+    distribution: int_uniform
+    min: 1
+    max: 3
+
+  # --- Sub-mapping --------------------------------------------------------
+
+  # Minimum overlap rate to create a registration error factor between
+  # submaps. Lower → more (potentially noisy) factors.
+  sub_mapping.min_implicit_loop_overlap:
+    distribution: uniform
+    min: 0.1
+    max: 0.4
+
+  # --- Global mapping -----------------------------------------------------
+
+  # Global submap voxel resolution.
+  global_mapping.submap_voxel_resolution:
+    distribution: log_uniform_values
+    min: 0.2
+    max: 2.0

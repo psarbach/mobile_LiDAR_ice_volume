@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: slam_sweep
+Version: 0.1.0
+Summary: Weights & Biases sweep orchestration for GLIM SLAM parameter tuning.
+Requires-Python: >=3.10
+Requires-Dist: wandb>=0.16
+Requires-Dist: numpy>=1.24
+Requires-Dist: click>=8.1
+Provides-Extra: ply
+Requires-Dist: open3d>=0.18; extra == "ply"
