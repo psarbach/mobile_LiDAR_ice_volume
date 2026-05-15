@@ -99,8 +99,7 @@ export SLAM_SWEEP_TIMEOUT=2400           # seconds per repetition
 
 
 #wandb agent <your-sweep-id>
-wandb agent spiegelburg-eth-z-rich/slam-sweep-t
-est/<your-sweep-id>
+wandb agent spiegelburg-eth-z-rich/slam-sweep-test/<your-sweep-id>
 ```
 
 Stop the agent with Ctrl-C. To launch a worker on a second machine, copy

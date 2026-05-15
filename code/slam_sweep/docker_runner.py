@@ -107,12 +107,33 @@ def run_glim(
         # still won't open — but the rest of the run will, provided the
         # viewer plugin is disabled in config.json.
         display = os.environ.get("DISPLAY")
-        if display:
-            docker_cmd += ["-e", f"DISPLAY={display}"]
+        
+        # If DISPLAY isn't set (common when running through wandb agent),
+        # try common defaults. For XWin32, this is typically :0.
+        if not display:
+            # Try common X11 display values in order of likelihood
+            for candidate in [":0", ":1", ":10", ":99"]:
+                socket_path = Path(f"/tmp/.X11-unix/X{candidate[1:]}")
+                if socket_path.exists():
+                    display = candidate
+                    break
+            
+            # If no socket found, default to :0 anyway (might be TCP-based like XWin32)
+            if not display:
+                display = ":0"
+        
+        # Always forward the DISPLAY variable into the container
+        docker_cmd += ["-e", f"DISPLAY={display}"]
+        
         # Mount the X11 socket if it exists (it does under WSLg and under
         # X-Win32 setups that follow the usual convention).
         if Path("/tmp/.X11-unix").exists():
             docker_cmd += ["-v", "/tmp/.X11-unix:/tmp/.X11-unix"]
+        
+        # For XWin32 (which may use TCP instead of Unix socket), also
+        # allow the container to reach localhost for X11 connections.
+        # This is already enabled by --network host above, but being explicit.
+
     docker_cmd += [
         "-v", f"{bag_path.parent}:/bag:ro",
         "-v", f"{config_dir}:/config:ro",

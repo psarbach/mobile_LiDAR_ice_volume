@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import shutil
 import warnings
+import re
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -40,26 +41,30 @@ from typing import Any, Mapping
 
 PARAM_MAP: dict[str, tuple[str, str]] = {
     # Frontend / odometry
-    "frontend.voxel_resolution":            ("config_odometry_gpu.json", "voxel_resolution"),
-    "frontend.voxelmap_levels":             ("config_odometry_gpu.json", "voxelmap_levels"),
-    "frontend.max_correspondence_distance": ("config_odometry_gpu.json", "max_correspondence_distance"),
-    "frontend.max_num_keyframes":           ("config_odometry_gpu.json", "max_num_keyframes"),
-    "frontend.keyframe_update_strategy":    ("config_odometry_gpu.json", "keyframe_update_strategy"),
-    "frontend.keyframe_max_overlap":        ("config_odometry_gpu.json", "keyframe_max_overlap"),
-    "frontend.keyframe_delta_trans":        ("config_odometry_gpu.json", "keyframe_delta_trans"),
-    "frontend.keyframe_delta_rot":          ("config_odometry_gpu.json", "keyframe_delta_rot"),
-    "frontend.registration_type":           ("config_odometry_gpu.json", "registration_type"),
+    # All params live under the "odometry_estimation" top-level key in the JSON.
+    "frontend.voxel_resolution":            ("config_odometry_gpu.json", "odometry_estimation.voxel_resolution"),
+    "frontend.voxelmap_levels":             ("config_odometry_gpu.json", "odometry_estimation.voxelmap_levels"),
+    "frontend.max_correspondence_distance": ("config_odometry_gpu.json", "odometry_estimation.max_correspondence_distance"),
+    "frontend.max_num_keyframes":           ("config_odometry_gpu.json", "odometry_estimation.max_num_keyframes"),
+    "frontend.smoother_lag":               ("config_odometry_gpu.json", "odometry_estimation.smoother_lag"),
+    "frontend.keyframe_update_strategy":    ("config_odometry_gpu.json", "odometry_estimation.keyframe_update_strategy"),
+    "frontend.keyframe_max_overlap":        ("config_odometry_gpu.json", "odometry_estimation.keyframe_max_overlap"),
+    "frontend.keyframe_delta_trans":        ("config_odometry_gpu.json", "odometry_estimation.keyframe_delta_trans"),
+    "frontend.keyframe_delta_rot":          ("config_odometry_gpu.json", "odometry_estimation.keyframe_delta_rot"),
+    "frontend.registration_type":           ("config_odometry_gpu.json", "odometry_estimation.registration_type"),
 
     # Sub-mapping
-    "sub_mapping.min_implicit_loop_overlap": ("config_sub_mapping_gpu.json", "min_implicit_loop_overlap"),
-    "sub_mapping.submap_voxel_resolution":   ("config_sub_mapping_gpu.json", "submap_voxel_resolution"),
-    "sub_mapping.keyframe_voxel_resolution": ("config_sub_mapping_gpu.json", "keyframe_voxel_resolution"),
-    "sub_mapping.enable_optimization":       ("config_sub_mapping_gpu.json", "enable_optimization"),
+    # All params live under the "sub_mapping" top-level key in the JSON.
+    "sub_mapping.submap_voxel_resolution":   ("config_sub_mapping_gpu.json", "sub_mapping.submap_voxel_resolution"),
+    "sub_mapping.keyframe_voxel_resolution": ("config_sub_mapping_gpu.json", "sub_mapping.keyframe_voxel_resolution"),
+    "sub_mapping.enable_optimization":       ("config_sub_mapping_gpu.json", "sub_mapping.enable_optimization"),
 
     # Global mapping
-    "global_mapping.submap_voxel_resolution":   ("config_global_mapping_gpu.json", "submap_voxel_resolution"),
-    "global_mapping.enable_optimization":       ("config_global_mapping_gpu.json", "enable_optimization"),
-    "global_mapping.registration_error_factor_type": ("config_global_mapping_gpu.json", "registration_error_factor_type"),
+    # All params live under the "global_mapping" top-level key in the JSON.
+    "global_mapping.submap_voxel_resolution":        ("config_global_mapping_gpu.json", "global_mapping.submap_voxel_resolution"),
+    "global_mapping.enable_optimization":            ("config_global_mapping_gpu.json", "global_mapping.enable_optimization"),
+    "global_mapping.registration_error_factor_type": ("config_global_mapping_gpu.json", "global_mapping.registration_error_factor_type"),
+    "global_mapping.min_implicit_loop_overlap":      ("config_global_mapping_gpu.json", "global_mapping.min_implicit_loop_overlap"),
 }
 
 
@@ -170,8 +175,20 @@ def materialize_config(
                 f"PARAM_MAP refers to a file that doesn't exist for your "
                 f"GLIM build (e.g. CPU vs GPU preset)."
             )
+        #with path.open("r") as f:
+            #cfg = json.load(f)
+        #new version to delete all comments in the json files
         with path.open("r") as f:
-            cfg = json.load(f)
+            content = f.read()
+            # Step 1: Remove multi-line blocks (/* ... */)
+            # We use re.S here so the dot matches newlines within the block
+            content = re.sub(r'/\*.*?\*/', '', content, flags=re.S)
+            
+            # Step 2: Remove single-line comments (// ...)
+            # We do NOT use re.S here so that // only eats until the end of its line
+            content = re.sub(r'//.*', '', content)
+
+            cfg = json.loads(content)
         for dotted, value in leafs.items():
             _set_dotted(cfg, dotted, value)
         with path.open("w") as f:
