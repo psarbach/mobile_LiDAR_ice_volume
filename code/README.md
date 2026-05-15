@@ -80,7 +80,10 @@ wandb login                       # one-time
 cp -r ~/glim/config_default ~/glim/config_baseline
 ```
 
-## Running a sweep
+# Running a sweep
+
+# !!!! check that docker and xwin is running!
+
 
 ```bash
 # 1. Edit sweep.yaml — pick the parameters you actually want to search.

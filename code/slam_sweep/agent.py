@@ -28,8 +28,6 @@ import argparse
 import json
 import os
 import shutil
-import socket
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -201,49 +199,12 @@ def _json_default(o):
     raise TypeError(f"Cannot serialize {type(o)}")
 
 
-def _check_prerequisites(use_display: bool) -> None:
-    """Verify Docker and (optionally) an X server are reachable; exit on failure."""
-    errors: list[str] = []
-
-    # Docker: `docker info` exits non-zero when the daemon is not running.
-    try:
-        r = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
-        if r.returncode != 0:
-            errors.append("Docker daemon not responding — is Docker Desktop / dockerd started?")
-    except FileNotFoundError:
-        errors.append("'docker' not found on PATH — is Docker installed?")
-    except subprocess.TimeoutExpired:
-        errors.append("'docker info' timed out — Docker daemon may be stalled.")
-
-    # X server: try Unix sockets (WSLg / local X) then TCP port 6000 (XWin32).
-    if use_display:
-        x_ok = any(Path(f"/tmp/.X11-unix/X{n}").exists() for n in range(4))
-        if not x_ok:
-            for port in [6000, 6001, 6002]:
-                try:
-                    with socket.create_connection(("127.0.0.1", port), timeout=2):
-                        x_ok = True
-                        break
-                except OSError:
-                    pass
-        if not x_ok:
-            errors.append("No X server found — start XWin32 (or VcXsrv / WSLg) before launching the sweep.")
-
-    if errors:
-        for msg in errors:
-            print(f"[slam_sweep] FATAL: {msg}", file=sys.stderr)
-        sys.exit(1)
-    print("[slam_sweep] Pre-flight OK: Docker running" + (", X server reachable." if use_display else "."))
-
-
 def main() -> None:
     args = _parse_args()
 
     # When running through `wandb agent`, force display enabled for GLIM.
     # This ensures the container gets proper X11/display forwarding.
     args.use_display = True
-
-    _check_prerequisites(args.use_display)
 
     # `wandb.init()` reads the trial's parameter assignment from the agent.
     wandb.init()
