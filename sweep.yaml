@@ -6,6 +6,9 @@
 #
 # Bayesian (Gaussian-process) search; no early stopping because each
 # trial is expensive and produces only one objective value.
+#
+# Active parameters: HIGH priority only (7 dims).
+# See sweep_parameters.csv for full parameter rationale and default values.
 
 entity: spiegelburg-eth-z-rich
 project: slam-sweep-test
@@ -28,55 +31,104 @@ metric:
 parameters:
 
   # --- Frontend (odometry) -----------------------------------------------
-  # See: https://github.com/koide3/glim/blob/master/docs/parameters.md
 
-  # Base VGICP voxel resolution. Outdoor: 0.5–2.0 m, indoor: 0.1–0.25 m.
-  # Mid-360 outdoor mapping typically wants 0.3–1.0 m.
-  #frontend.voxel_resolution:
-    #distribution: log_uniform_values
-    #min: 0.15
-    #max: 1.5
-
-  # Maximum corresponding distance for scan matching. Default 2.0 m.
-  #frontend.max_correspondence_distance:
-    #distribution: uniform
-    #min: 1.0
-    #max: 4.0
-
-  # Number of keyframes kept in odometry. More → less drift, more cost.
-  #frontend.max_num_keyframes:
-    #distribution: int_uniform
-    #min: 8
-    #max: 25
-
-  # Multi-resolution voxel levels.
-  #frontend.voxelmap_levels:
-    #distribution: int_uniform
-    #min: 1
-    #max: 3
-
-  #frontend.smoother_lag:
-    #distribution: int_uniform
-    #min: 5
-    #max: 20
-
-  # --- Sub-mapping --------------------------------------------------------
-
-  # Minimum overlap rate to create a registration error factor between
-  # submaps. Lower → more (potentially noisy) factors.
-
-  #sub_mapping.min_implicit_loop_overlap:
-    #distribution: uniform
-    #min: 0.1
-    #max: 0.4
-  sub_mapping.enable_optimization:
+  # Dogleg trust-region optimizer. Docs name tunnels/corridors explicitly.
+  # Default: false.
+  frontend.use_isam2_dogleg:
     distribution: categorical
     values: [true, false]
 
+  # OVERLAP adapts to geometry; DISPLACEMENT forces keyframes on thresholds.
+  # In a featureless tunnel OVERLAP may trigger too rarely. Default: OVERLAP.
+  frontend.keyframe_update_strategy:
+    distribution: categorical
+    values: ["OVERLAP", "DISPLACEMENT"]
+
+  # Fixed-lag smoother window. A 180° turn at walking pace takes 10–20 s;
+  # 5 s drops the entry half before the exit is seen. Default: 5.0 s.
+  frontend.smoother_lag:
+    distribution: uniform
+    min: 5
+    max: 15
+
+  # Keyframes held in the sliding window. More = less along-axis drift.
+  # Default: 15.
+  frontend.max_num_keyframes:
+    distribution: int_uniform
+    min: 15
+    max: 30
+
+  # Latest pose connected to last N poses via registration factors.
+  # Default: 2 (chain-only). Previously hand-set to 10 to stop runaways.
+  frontend.full_connection_window_size:
+    distribution: int_uniform
+    min: 2
+    max: 15
+
   # --- Global mapping -----------------------------------------------------
 
-  # Global submap voxel resolution.
-  #global_mapping.submap_voxel_resolution:
-    #distribution: log_uniform_values
-    #min: 0.2
-    #max: 2.0
+  # Inter-submap VGICP voxel resolution — the direct loop-closure quality knob.
+  # At default 0.5 m a ~5 m tunnel wall is nearly flat; finer voxels give
+  # more rotational grip. Default: 0.5 m (upper boundary).
+  global_mapping.submap_voxel_resolution:
+    distribution: log_uniform_values
+    min: 0.1
+    max: 0.5
+
+  # Minimum geometric overlap to create a loop-closure factor. Tunnel geometry
+  # is repetitive so co-located outbound/return submaps may score low.
+  # Default: 0.2 (within range). Lower bound 0.05 is aggressive — test carefully.
+  global_mapping.min_implicit_loop_overlap:
+    distribution: uniform
+    min: 0.05
+    max: 0.25
+
+  # ---------------------------------------------------------------------------
+  # MEDIUM priority — uncomment to add to the sweep (increases search space).
+  # ---------------------------------------------------------------------------
+
+  # VGICP voxel resolution for odometry scan matching. Default: 0.25 m.
+  #frontend.voxel_resolution:
+  #  distribution: log_uniform_values
+  #  min: 0.08
+  #  max: 0.25
+
+  # Multi-resolution voxelmap levels. Default: 2.
+  #frontend.voxelmap_levels:
+  #  distribution: int_uniform
+  #  min: 2
+  #  max: 3
+
+  # DISPLACEMENT-mode translation threshold. Default: 2.0 m. Previously 0.25 m.
+  #frontend.keyframe_delta_trans:
+  #  distribution: log_uniform_values
+  #  min: 0.1
+  #  max: 2.0
+
+  # DISPLACEMENT-mode rotation threshold. Default: 0.5 rad (~29°).
+  #frontend.keyframe_delta_rot:
+  #  distribution: uniform
+  #  min: 0.15
+  #  max: 0.5
+
+  # Re-optimize each submap before handing to global mapping. Default: false.
+  #sub_mapping.enable_optimization:
+  #  distribution: categorical
+  #  values: [true, false]
+
+  # VGICP voxel resolution within submaps. Default: 0.25 m.
+  #sub_mapping.keyframe_voxel_resolution:
+  #  distribution: log_uniform_values
+  #  min: 0.1
+  #  max: 0.3
+
+  # ---------------------------------------------------------------------------
+  # LOW priority — uncomment only after HIGH/MEDIUM sweep is complete.
+  # ---------------------------------------------------------------------------
+
+  # Max spatial distance between two submaps to be considered for loop closure.
+  # Default: 100 m. Increase if drift causes co-located submaps to appear far apart.
+  #global_mapping.max_implicit_loop_distance:
+  #  distribution: uniform
+  #  min: 80
+  #  max: 200

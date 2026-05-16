@@ -82,7 +82,7 @@ cp -r ~/glim/config_default ~/glim/config_baseline
 
 # Running a sweep
 
-# !!!! check that docker and xwin is running!
+### !!!! check that docker and xwin is running!
 
 
 ```bash
@@ -97,6 +97,13 @@ wandb sweep sweep.yaml
 export SLAM_SWEEP_BAG=/abs/path/to/your.mcap
 export SLAM_SWEEP_DEFAULT_CONFIG=/home/user/glim/config_baseline
 export SLAM_SWEEP_RUNS_ROOT=/home/user/slam_sweep_runs
+export SLAM_SWEEP_REPS=3                 # repetitions per trial
+export SLAM_SWEEP_TIMEOUT=2400           # seconds per repetition
+
+# export commands adjusted for this file setup
+export SLAM_SWEEP_BAG=~/glim_sweep/data/rosbag2_2026_03_30-12_05_05_merged.mcap 
+export SLAM_SWEEP_DEFAULT_CONFIG=~/glim_sweep/config_default/
+export SLAM_SWEEP_RUNS_ROOT=~/glim_sweep/runs/
 export SLAM_SWEEP_REPS=3                 # repetitions per trial
 export SLAM_SWEEP_TIMEOUT=2400           # seconds per repetition
 

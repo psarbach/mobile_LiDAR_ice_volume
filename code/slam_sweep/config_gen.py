@@ -47,6 +47,8 @@ PARAM_MAP: dict[str, tuple[str, str]] = {
     "frontend.max_correspondence_distance": ("config_odometry_gpu.json", "odometry_estimation.max_correspondence_distance"),
     "frontend.max_num_keyframes":           ("config_odometry_gpu.json", "odometry_estimation.max_num_keyframes"),
     "frontend.smoother_lag":               ("config_odometry_gpu.json", "odometry_estimation.smoother_lag"),
+    "frontend.use_isam2_dogleg":           ("config_odometry_gpu.json", "odometry_estimation.use_isam2_dogleg"),
+    "frontend.full_connection_window_size": ("config_odometry_gpu.json", "odometry_estimation.full_connection_window_size"),
     "frontend.keyframe_update_strategy":    ("config_odometry_gpu.json", "odometry_estimation.keyframe_update_strategy"),
     "frontend.keyframe_max_overlap":        ("config_odometry_gpu.json", "odometry_estimation.keyframe_max_overlap"),
     "frontend.keyframe_delta_trans":        ("config_odometry_gpu.json", "odometry_estimation.keyframe_delta_trans"),
@@ -65,6 +67,7 @@ PARAM_MAP: dict[str, tuple[str, str]] = {
     "global_mapping.enable_optimization":            ("config_global_mapping_gpu.json", "global_mapping.enable_optimization"),
     "global_mapping.registration_error_factor_type": ("config_global_mapping_gpu.json", "global_mapping.registration_error_factor_type"),
     "global_mapping.min_implicit_loop_overlap":      ("config_global_mapping_gpu.json", "global_mapping.min_implicit_loop_overlap"),
+    "global_mapping.max_implicit_loop_distance":     ("config_global_mapping_gpu.json", "global_mapping.max_implicit_loop_distance"),
 }
 
 
