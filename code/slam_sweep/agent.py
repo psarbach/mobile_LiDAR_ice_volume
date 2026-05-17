@@ -202,10 +202,6 @@ def _json_default(o):
 def main() -> None:
     args = _parse_args()
 
-    # When running through `wandb agent`, force display enabled for GLIM.
-    # This ensures the container gets proper X11/display forwarding.
-    args.use_display = True
-
     # `wandb.init()` reads the trial's parameter assignment from the agent.
     wandb.init()
     params = {k: v for k, v in dict(wandb.config).items() if not k.startswith("_")}

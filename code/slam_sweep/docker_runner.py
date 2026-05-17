@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -97,42 +98,15 @@ def run_glim(
         "exit $rc"
     )
 
-    docker_cmd: list[str] = ["docker", "run", "--rm", "--network", "host"]
+    container_name = f"glim_sweep_{uuid.uuid4().hex[:12]}"
+    docker_cmd: list[str] = ["docker", "run", "--rm", "--name", container_name, "--network", "host"]
     if use_gpu:
         docker_cmd += ["--gpus", "all"]
     if use_display:
-        # X11 forwarding for the GLFW-based standard_viewer. On WSL with
-        # X-Win32 (or VcXsrv/Xming), DISPLAY is typically set in the host
-        # shell already. If DISPLAY isn't set on the host, the viewer
-        # still won't open — but the rest of the run will, provided the
-        # viewer plugin is disabled in config.json.
-        display = os.environ.get("DISPLAY")
-        
-        # If DISPLAY isn't set (common when running through wandb agent),
-        # try common defaults. For XWin32, this is typically :0.
-        if not display:
-            # Try common X11 display values in order of likelihood
-            for candidate in [":0", ":1", ":10", ":99"]:
-                socket_path = Path(f"/tmp/.X11-unix/X{candidate[1:]}")
-                if socket_path.exists():
-                    display = candidate
-                    break
-            
-            # If no socket found, default to :0 anyway (might be TCP-based like XWin32)
-            if not display:
-                display = ":0"
-        
-        # Always forward the DISPLAY variable into the container
+        display = os.environ.get("DISPLAY", ":0")
         docker_cmd += ["-e", f"DISPLAY={display}"]
-        
-        # Mount the X11 socket if it exists (it does under WSLg and under
-        # X-Win32 setups that follow the usual convention).
         if Path("/tmp/.X11-unix").exists():
             docker_cmd += ["-v", "/tmp/.X11-unix:/tmp/.X11-unix"]
-        
-        # For XWin32 (which may use TCP instead of Unix socket), also
-        # allow the container to reach localhost for X11 connections.
-        # This is already enabled by --network host above, but being explicit.
 
     docker_cmd += [
         "-v", f"{bag_path.parent}:/bag:ro",
@@ -158,6 +132,14 @@ def run_glim(
     except subprocess.TimeoutExpired:
         timed_out = True
         exit_code = 124  # GNU `timeout`'s convention for timeouts.
+        # SIGKILLing the `docker run` client process does NOT stop the
+        # container — the daemon keeps it alive. Force-remove it so the
+        # GLFW window closes and GPU/CPU resources are freed before the
+        # next trial starts.
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            capture_output=True, timeout=30,
+        )
     except FileNotFoundError as e:
         # `docker` not on PATH. Surface this clearly rather than as a
         # generic crash inside the orchestrator.
