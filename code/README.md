@@ -125,6 +125,8 @@ slam-sweep run-once \
   --bag /abs/path/to/your.mcap \
   --default-config /home/user/glim/config_baseline \
   --runs-root ./runs --reps 1
+  --display
+  # if the run takes longer than standard timeout 1800, also include this parse arg
 ```
 
 ## Exporting a PLY from a finished run

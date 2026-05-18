@@ -6,8 +6,8 @@
   //                          : This can be useful for real-time visualization on low-end GPUs but introduces some glitches
   // partial_rendering_budget : Number of points to render per frame
   "standard_viewer": {
-    "viewer_width": 2560,
-    "viewer_height": 1440,
+    "viewer_width": 1440,
+    "viewer_height": 900,
     "default_z_range": [
       -2.0,
       4.0
@@ -21,8 +21,8 @@
     "factors_alpha": 0.5
   },
   "interactive_viewer": {
-    "viewer_width": 2560,
-    "viewer_height": 1440,
+    "viewer_width": 1440,
+    "viewer_height": 900,
     "default_z_range": [
       -2.0,
       4.0
