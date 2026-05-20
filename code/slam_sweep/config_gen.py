@@ -60,6 +60,7 @@ PARAM_MAP: dict[str, tuple[str, str]] = {
     "sub_mapping.submap_voxel_resolution":   ("config_sub_mapping_gpu.json", "sub_mapping.submap_voxel_resolution"),
     "sub_mapping.keyframe_voxel_resolution": ("config_sub_mapping_gpu.json", "sub_mapping.keyframe_voxel_resolution"),
     "sub_mapping.enable_optimization":       ("config_sub_mapping_gpu.json", "sub_mapping.enable_optimization"),
+    "sub_mapping.max_num_keyframes":         ("config_sub_mapping_gpu.json", "sub_mapping.max_num_keyframes"),
 
     # Global mapping
     # All params live under the "global_mapping" top-level key in the JSON.

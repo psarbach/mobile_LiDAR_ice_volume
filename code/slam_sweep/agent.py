@@ -16,7 +16,7 @@ Environment variables (or matching CLI flags) configure the rest:
     SLAM_SWEEP_RUNS_ROOT         where to write per-run dirs (default ./runs)
     SLAM_SWEEP_IMAGE             docker image tag (default koide3/glim_ros2:jazzy_cuda13.1)
     SLAM_SWEEP_REPS              repetitions per trial (default 3)
-    SLAM_SWEEP_TIMEOUT           seconds per repetition (default 1800)
+    SLAM_SWEEP_TIMEOUT           seconds per repetition (default: no limit)
     SLAM_SWEEP_PENALTY           failure penalty in meters (default 100.0)
     SLAM_SWEEP_RUNAWAY           runaway distance threshold (default 500.0)
     SLAM_SWEEP_KEEP_DUMPS        "1" to keep full GLIM dumps per rep
@@ -51,7 +51,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--runs-root", default=os.environ.get("SLAM_SWEEP_RUNS_ROOT", "./runs"))
     p.add_argument("--image", default=os.environ.get("SLAM_SWEEP_IMAGE", "koide3/glim_ros2:jazzy_cuda13.1"))
     p.add_argument("--reps", type=int, default=int(os.environ.get("SLAM_SWEEP_REPS", "3")))
-    p.add_argument("--timeout-s", type=int, default=int(os.environ.get("SLAM_SWEEP_TIMEOUT", "1800")))
+    _timeout_env = os.environ.get("SLAM_SWEEP_TIMEOUT")
+    p.add_argument("--timeout-s", type=int, default=int(_timeout_env) if _timeout_env else None)
     p.add_argument("--failure-penalty-m", type=float,
                    default=float(os.environ.get("SLAM_SWEEP_PENALTY", "100.0")))
     p.add_argument("--runaway-threshold-m", type=float,

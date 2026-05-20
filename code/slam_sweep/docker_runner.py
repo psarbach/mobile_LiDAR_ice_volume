@@ -28,7 +28,7 @@ def run_glim(
     config_dir: Path,
     output_dir: Path,
     log_path: Path,
-    timeout_s: int = 1800,
+    timeout_s: int | None = None,
     auto_quit: bool = True,
     use_gpu: bool = True,
     use_display: bool = False,
@@ -49,7 +49,7 @@ def run_glim(
                      Created if missing.
         log_path:    Where to write the container's combined stdout/stderr.
         timeout_s:   Wall-clock cap. On expiry, the container is killed and
-                     `timed_out=True` is returned.
+                     `timed_out=True` is returned. None means no limit.
         auto_quit:   Pass `auto_quit:=true` to GLIM so it exits after the bag.
         use_gpu:     Pass `--gpus all` to docker.
         use_display: Forward $DISPLAY and the X11 socket into the container.

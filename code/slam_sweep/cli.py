@@ -43,8 +43,8 @@ def main() -> None:
               help="Docker image tag.")
 @click.option("--reps", type=int, default=1, show_default=True,
               help="Number of repetitions.")
-@click.option("--timeout-s", type=int, default=1800, show_default=True,
-              help="Per-rep timeout, seconds.")
+@click.option("--timeout-s", type=int, default=None,
+              help="Per-rep timeout, seconds. Omit for no limit.")
 @click.option("--failure-penalty-m", type=float, default=100.0, show_default=True)
 @click.option("--runaway-threshold-m", type=float, default=500.0, show_default=True)
 @click.option("--keep-dumps/--no-keep-dumps", default=False, show_default=True,
@@ -78,6 +78,57 @@ def run_once(bag_str, default_config_str, runs_root, image, reps,
     run_id = time.strftime("local-%Y%m%d-%H%M%S")
     summary = evaluate_trial(args, params, run_id)
     click.echo(json.dumps(summary, indent=2))
+
+
+# -----------------------------------------------------------------------------
+# slam-sweep optuna-run
+# -----------------------------------------------------------------------------
+
+@main.command("optuna-run")
+@click.option("--bag", "bag_str", type=click.Path(exists=True, dir_okay=False), required=True,
+              help="Absolute path to the .mcap rosbag.")
+@click.option("--default-config", "default_config_str", type=click.Path(exists=True, file_okay=False), required=True,
+              help="Path to the default GLIM config directory.")
+@click.option("--wandb-project", required=True, help="W&B project name.")
+@click.option("--wandb-entity", default=None, help="W&B entity (team or user). Defaults to your W&B default.")
+@click.option("--runs-root", type=click.Path(file_okay=False), default="./runs", show_default=True,
+              help="Where to write per-run directories and the SQLite study file.")
+@click.option("--image", default=DEFAULT_IMAGE, show_default=True, help="Docker image tag.")
+@click.option("--reps", type=int, default=3, show_default=True, help="Repetitions per trial.")
+@click.option("--timeout-s", type=int, default=None, help="Per-rep timeout, seconds. Omit for no limit.")
+@click.option("--n-trials", type=int, default=100, show_default=True, help="Total Optuna trials to run.")
+@click.option("--study-name", default="glim_sweep", show_default=True,
+              help="Optuna study name; also used as the SQLite filename (<runs-root>/<study-name>.db).")
+@click.option("--failure-penalty-m", type=float, default=100.0, show_default=True)
+@click.option("--runaway-threshold-m", type=float, default=500.0, show_default=True)
+@click.option("--keep-dumps/--no-keep-dumps", default=False, show_default=True,
+              help="Keep the full GLIM dump (large) per rep.")
+@click.option("--display/--no-display", default=False, show_default=True,
+              help="Forward $DISPLAY + X11 socket into the container.")
+def optuna_run(bag_str, default_config_str, wandb_project, wandb_entity, runs_root,
+               image, reps, timeout_s, n_trials, study_name,
+               failure_penalty_m, runaway_threshold_m, keep_dumps, display):
+    """Run a conditional Bayesian sweep with Optuna (TPE sampler) + W&B logging."""
+    import argparse
+    from .optuna_agent import run_study
+
+    args = argparse.Namespace(
+        bag=bag_str,
+        default_config=default_config_str,
+        wandb_project=wandb_project,
+        wandb_entity=wandb_entity,
+        runs_root=runs_root,
+        image=image,
+        reps=reps,
+        timeout_s=timeout_s,
+        n_trials=n_trials,
+        study_name=study_name,
+        failure_penalty_m=failure_penalty_m,
+        runaway_threshold_m=runaway_threshold_m,
+        keep_dumps=keep_dumps,
+        use_display=display,
+    )
+    run_study(args)
 
 
 # -----------------------------------------------------------------------------

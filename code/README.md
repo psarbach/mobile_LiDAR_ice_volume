@@ -1,9 +1,16 @@
-# slam_sweep — GLIM parameter sweeps with W&B Bayesian optimization
+# slam_sweep — GLIM parameter sweeps with Optuna + W&B
 
 A small Python orchestrator that drives [GLIM](https://github.com/koide3/glim)
-through Weights & Biases sweeps. Each W&B trial mutates the default GLIM
-config, runs GLIM in a non-interactive Docker container N times, and reports
-an aggregate trajectory error back to the optimizer.
+through Bayesian parameter sweeps. Each trial mutates the default GLIM config,
+runs GLIM in a non-interactive Docker container N times, and reports an
+aggregate trajectory error back to the optimizer.
+
+Two sweep modes are available:
+
+| Mode | Optimizer | Entry point | When to use |
+|---|---|---|---|
+| **Optuna** (recommended) | TPE sampler | `slam-sweep optuna-run` | Conditional parameter spaces; parameters that are inactive for a given trial are never sampled, saving optimizer budget |
+| **W&B native** | Gaussian Process | `wandb agent <sweep-id>` | Simple flat parameter spaces; no conditional dependencies |
 
 ## Architecture: where everything runs
 
@@ -21,7 +28,8 @@ Everything else lives on the **host** (your WSL shell) in a Python venv:
 | `docker run` invocation per trial | host shell |
 | Trajectory parsing (TUM format) | host Python (numpy) |
 | Metric aggregation | host Python |
-| W&B agent loop & Bayesian optimizer | host Python |
+| Optuna study loop & TPE sampler | host Python |
+| W&B run logging (one run per trial) | host Python |
 | Optional PLY export from a kept dump | host Python (open3d) |
 
 The container is treated as a frozen execution sandbox. The orchestrator
@@ -50,13 +58,14 @@ sudo.
 
 ```
 slam_sweep/
-├── pyproject.toml              # Python deps: wandb, numpy, click; open3d optional
-├── sweep.yaml                  # Example W&B sweep spec (Bayesian)
+├── pyproject.toml              # Python deps: wandb, optuna, numpy, click; open3d optional
+├── sweep.yaml                  # W&B sweep spec (Bayesian, flat parameter space)
 ├── README.md
 └── slam_sweep/
     ├── __init__.py
     ├── agent.py                # W&B agent entry point (one trial = one config × N reps)
-    ├── cli.py                  # `slam-sweep` CLI (run-once, export-ply)
+    ├── optuna_agent.py         # Optuna entry point — conditional param space, SQLite study
+    ├── cli.py                  # `slam-sweep` CLI (run-once, optuna-run, export-ply)
     ├── config_gen.py           # Default-config copy + JSON leaf patcher; PARAM_MAP
     ├── docker_runner.py        # Non-interactive `docker run` for one GLIM execution
     ├── trajectory.py           # TUM-format trajectory parsing + loop-closure error
@@ -72,9 +81,9 @@ docker pull koide3/glim_ros2:jazzy_cuda13.1
 # 2. Install the orchestrator in your WSL Python:
 python3 -m venv ~/.venvs/slam_sweep
 source ~/.venvs/slam_sweep/bin/activate
-pip install -e .                 # core
+pip install -e .                 # core (includes wandb, optuna, numpy, click)
 pip install -e .[ply]            # also installs open3d for export-ply
-wandb login                       # one-time
+wandb login                      # one-time
 
 # 3. Make a writeable copy of GLIM's default config to use as the baseline:
 cp -r ~/glim/config_default ~/glim/config_baseline
@@ -84,6 +93,62 @@ cp -r ~/glim/config_default ~/glim/config_baseline
 
 ### !!!! check that docker and xwin is running!
 
+## Option A — Optuna sweep (recommended)
+
+Optuna drives the full study loop from a single command. The parameter space
+is conditional: parameters that are inactive for a given trial (e.g.
+`keyframe_delta_trans` when `keyframe_update_strategy=OVERLAP`) are never
+sampled, so the optimizer's budget is not wasted. Each trial is logged to W&B
+as an individual run; inactive parameters appear as `null`/NaN on
+parallel-coordinate axes.
+
+The study is saved to a SQLite file (`<runs-root>/<study-name>.db`). If the
+process is stopped and restarted with the same command, Optuna resumes from
+completed trials automatically.
+
+```bash
+slam-sweep optuna-run \
+  --bag ~/glim_sweep/data/rosbag2_2026_03_30-12_05_05_merged.mcap \
+  --default-config ~/glim_sweep/config_default/ \
+  --wandb-project slam-sweep-test \
+  --wandb-entity spiegelburg-eth-z-rich \
+  --runs-root ~/glim_sweep/runs/ \
+  --reps 3 \
+  --n-trials 100 \
+  --study-name glim_sweep        # SQLite saved to runs/glim_sweep.db
+  # --timeout-s 7200             # optional per-rep cap; omit for no limit
+```
+
+Stop with Ctrl-C at any time; progress is saved. Resume by re-running the
+same command. Running 2×50 trials is identical to 1×100 — Optuna loads all
+completed trials from the SQLite file and the second run continues where the
+first left off; the TPE model uses the full history.
+
+### How many trials?
+
+Optuna's TPE sampler uses the first **25 trials** for random exploration before
+its model becomes useful. With ~12–14 active parameters per trial, roughly
+10× the dimensionality (~120 trials) would be thorough, but per-trial cost
+dominates. With 5 reps and 15–30 min per GLIM run:
+
+| Trials | Time per trial | Estimated total |
+|---|---|---|
+| 30–40 | 75–150 min | ~2–4 days |
+| 50 | 75–150 min | ~2.5–5 days |
+| 100 | 75–150 min | ~5–10 days |
+
+**Recommended:** start with `--n-trials 40`. Check the W&B parallel-coordinate
+plot after ~1 week — if good runs are clustering in a region, extend by
+re-running the same command for another 40. Failed trials exit early (crash or
+runaway before all 5 reps finish), so the first trials tend to be faster than
+later ones. Five reps per trial is worth the cost: the glacier environment has
+high trial-to-trial variance, and the RMSE objective needs enough reps to
+distinguish genuine improvement from a lucky single run.
+
+## Option B — W&B native sweep (flat parameter space only)
+
+Use this when you want W&B to control the optimizer loop directly and all
+parameters are independent (no conditional dependencies).
 
 ```bash
 # 1. Edit sweep.yaml — pick the parameters you actually want to search.
@@ -93,22 +158,13 @@ cp -r ~/glim/config_default ~/glim/config_baseline
 wandb sweep sweep.yaml
 # This prints a sweep ID like 'user/glim-sweep/abc123'.
 
-# 3. Launch one or more agents. One worker per GPU — GLIM saturates the GPU.
-export SLAM_SWEEP_BAG=/abs/path/to/your.mcap
-export SLAM_SWEEP_DEFAULT_CONFIG=/home/user/glim/config_baseline
-export SLAM_SWEEP_RUNS_ROOT=/home/user/slam_sweep_runs
-export SLAM_SWEEP_REPS=3                 # repetitions per trial
-export SLAM_SWEEP_TIMEOUT=2400           # seconds per repetition
-
-# export commands adjusted for this file setup
-export SLAM_SWEEP_BAG=~/glim_sweep/data/rosbag2_2026_03_30-12_05_05_merged.mcap 
+# 3. Set env vars and launch the agent:
+export SLAM_SWEEP_BAG=~/glim_sweep/data/rosbag2_2026_03_30-12_05_05_merged.mcap
 export SLAM_SWEEP_DEFAULT_CONFIG=~/glim_sweep/config_default/
 export SLAM_SWEEP_RUNS_ROOT=~/glim_sweep/runs/
-export SLAM_SWEEP_REPS=3                 # repetitions per trial
-export SLAM_SWEEP_TIMEOUT=2400           # seconds per repetition
+export SLAM_SWEEP_REPS=5
+export SLAM_SWEEP_TIMEOUT=7200           # optional, seconds per rep
 
-
-#wandb agent <your-sweep-id>
 wandb agent spiegelburg-eth-z-rich/slam-sweep-test/<your-sweep-id>
 ```
 
@@ -126,7 +182,8 @@ slam-sweep run-once \
   --default-config /home/user/glim/config_baseline \
   --runs-root ./runs --reps 1
   --display
-  # if the run takes longer than standard timeout 1800, also include this parse arg
+  # if the run might crash, add timeout parse arg, otherwise limitless
+  --timeout-s 7200
 ```
 
 ## Exporting a PLY from a finished run
