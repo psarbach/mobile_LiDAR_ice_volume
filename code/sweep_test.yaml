@@ -1,0 +1,40 @@
+# Minimal 3-parameter sweep for testing W&B native integration (Option B).
+# For Optuna testing use run_optuna_test.py instead — it tests conditional
+# NaN logging (keyframe_delta_rot shown as null when OVERLAP is active).
+#
+# Register with: wandb sweep sweep_test.yaml
+# Then run:      wandb agent <entity>/<project>/<sweep-id>
+
+program: agent.py
+command:
+  - ${env}
+  - python
+  - -m
+  - slam_sweep.agent
+
+method: bayes
+
+metric:
+  name: objective
+  goal: minimize
+
+parameters:
+
+  frontend.keyframe_update_strategy:
+    values:
+      - OVERLAP
+      - DISPLACEMENT
+
+  # Only meaningful when keyframe_update_strategy = DISPLACEMENT.
+  # W&B native sweeps cannot enforce this — the value is sampled and written
+  # to the config regardless of strategy. Use run_optuna_test.py to test
+  # proper conditional handling (NaN logged when OVERLAP is active).
+  frontend.keyframe_delta_rot:
+    distribution: uniform
+    min: 0.15
+    max: 0.5
+
+  global_mapping.min_implicit_loop_overlap:
+    distribution: uniform
+    min: 0.05
+    max: 0.25

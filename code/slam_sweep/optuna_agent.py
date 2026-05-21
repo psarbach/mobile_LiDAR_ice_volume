@@ -57,31 +57,37 @@ def suggest_params(trial: optuna.Trial) -> tuple[dict[str, Any], dict[str, Any]]
         # the parallel-coordinate axis — visually equivalent to NaN.
         w[key] = None
 
+    def _r2(v: float) -> float:
+        """Round to 2 decimal places — limits precision written to GLIM configs and W&B."""
+        return round(v, 2)
+
     # ------------------------------------------------------------------
     # Unconditional parameters
     # ------------------------------------------------------------------
     _set("frontend.use_isam2_dogleg",
          trial.suggest_categorical("frontend.use_isam2_dogleg", [True, False]))
     _set("frontend.smoother_lag",
-         trial.suggest_float("frontend.smoother_lag", 5.0, 15.0))
+         trial.suggest_int("frontend.smoother_lag", 5, 15))              # int seconds
     _set("frontend.max_num_keyframes",
          trial.suggest_int("frontend.max_num_keyframes", 15, 30))
     _set("frontend.full_connection_window_size",
          trial.suggest_int("frontend.full_connection_window_size", 2, 15))
     _set("frontend.voxel_resolution",
-         trial.suggest_float("frontend.voxel_resolution", 0.08, 0.25, log=True))
+         _r2(trial.suggest_float("frontend.voxel_resolution", 0.08, 0.25, log=True)))
     _set("frontend.voxelmap_levels",
          trial.suggest_int("frontend.voxelmap_levels", 2, 3))
 
     _set("sub_mapping.max_num_keyframes",
          trial.suggest_int("sub_mapping.max_num_keyframes", 15, 50))
 
+    _set("global_mapping.use_isam2_dogleg",
+         trial.suggest_categorical("global_mapping.use_isam2_dogleg", [True, False]))
     _set("global_mapping.submap_voxel_resolution",
-         trial.suggest_float("global_mapping.submap_voxel_resolution", 0.05, 0.5, log=True))
+         _r2(trial.suggest_float("global_mapping.submap_voxel_resolution", 0.05, 0.5, log=True)))
     _set("global_mapping.min_implicit_loop_overlap",
-         trial.suggest_float("global_mapping.min_implicit_loop_overlap", 0.05, 0.25))
+         _r2(trial.suggest_float("global_mapping.min_implicit_loop_overlap", 0.05, 0.25)))
     _set("global_mapping.max_implicit_loop_distance",
-         trial.suggest_float("global_mapping.max_implicit_loop_distance", 80.0, 200.0))
+         trial.suggest_int("global_mapping.max_implicit_loop_distance", 80, 200))  # int metres
 
     # ------------------------------------------------------------------
     # Branch 1: odometry keyframe strategy
@@ -94,14 +100,14 @@ def suggest_params(trial: optuna.Trial) -> tuple[dict[str, Any], dict[str, Any]]
 
     if strategy == "OVERLAP":
         _set("frontend.keyframe_max_overlap",
-             trial.suggest_float("frontend.keyframe_max_overlap", 0.5, 0.95))
+             _r2(trial.suggest_float("frontend.keyframe_max_overlap", 0.5, 0.95)))
         _inactive("frontend.keyframe_delta_trans")
         _inactive("frontend.keyframe_delta_rot")
     else:  # DISPLACEMENT
         _set("frontend.keyframe_delta_trans",
-             trial.suggest_float("frontend.keyframe_delta_trans", 0.1, 2.0, log=True))
+             _r2(trial.suggest_float("frontend.keyframe_delta_trans", 0.1, 2.0, log=True)))
         _set("frontend.keyframe_delta_rot",
-             trial.suggest_float("frontend.keyframe_delta_rot", 0.15, 0.5))
+             _r2(trial.suggest_float("frontend.keyframe_delta_rot", 0.15, 0.5)))
         _inactive("frontend.keyframe_max_overlap")
 
     # ------------------------------------------------------------------
@@ -115,7 +121,7 @@ def suggest_params(trial: optuna.Trial) -> tuple[dict[str, Any], dict[str, Any]]
 
     if enable_opt:
         _set("sub_mapping.keyframe_voxel_resolution",
-             trial.suggest_float("sub_mapping.keyframe_voxel_resolution", 0.1, 0.3, log=True))
+             _r2(trial.suggest_float("sub_mapping.keyframe_voxel_resolution", 0.1, 0.3, log=True)))
     else:
         _inactive("sub_mapping.keyframe_voxel_resolution")
 
