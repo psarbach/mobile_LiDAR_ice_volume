@@ -1,6 +1,0 @@
-wandb>=0.16
-numpy>=1.24
-click>=8.1
-
-[ply]
-open3d>=0.18
