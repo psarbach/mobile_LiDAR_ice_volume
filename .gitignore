@@ -1,1 +1,16 @@
 *.mcap
+data/.
+.gitignore
+code/runs/
+code/wandb/
+code\slam_sweep\build_dense_map.py
+runs/
+wandb/
+exports/
+volume/data/
+volume/output/
+volume/cache/*
+volume/figures/*
+volume/results/*volume/cache/
+volume/results/
+param_plots/

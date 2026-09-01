@@ -104,20 +104,23 @@ parallel-coordinate axes.
 
 The study is saved to a SQLite file (`<runs-root>/<study-name>.db`). If the
 process is stopped and restarted with the same command, Optuna resumes from
-completed trials automatically.
+completed trials automatically. SQLite study saved to runs/glim_sweep.db
 
 ```bash
 slam-sweep optuna-run \
   --bag ~/glim_sweep/data/rosbag2_2026_03_30-12_05_05_merged.mcap \
   --default-config ~/glim_sweep/config_default/ \
-  --wandb-project slam-sweep-test \
+  --wandb-project sweep_ice_tunnel \
   --wandb-entity spiegelburg-eth-z-rich \
   --runs-root ~/glim_sweep/runs/ \
-  --reps 3 \
-  --n-trials 100 \
-  --study-name glim_sweep        # SQLite saved to runs/glim_sweep.db
-  # --timeout-s 7200             # optional per-rep cap; omit for no limit
+  --reps 5 \
+  --n-trials 50 \
+  --study-name glim_sweep \
+  --timeout-s 7200 \
+  --display
 ```
+
+Remove --timeout-s to run without a per-rep time limit
 
 Stop with Ctrl-C at any time; progress is saved. Resume by re-running the
 same command. Running 2×50 trials is identical to 1×100 — Optuna loads all
@@ -180,11 +183,24 @@ the default config produces a parseable trajectory.
 slam-sweep run-once \
   --bag /abs/path/to/your.mcap \
   --default-config /home/user/glim/config_baseline \
-  --runs-root ./runs --reps 1
-  --display
-  # if the run might crash, add timeout parse arg, otherwise limitless
-  --timeout-s 7200
+  --runs-root ./runs --reps 1 \
+  --display \
+  --timeout-s 7200 \
+  --keep-dumps
 ```
+
+or for several files in data folder
+```bash
+  for bag in ~/glim_sweep/data/*.mcap; do
+    slam-sweep run-once \
+      --bag "$bag" \
+      --default-config ~/glim_sweep/config_default/ \
+      --runs-root ~/glim_sweep/runs/ \
+      --reps 5 \
+      --keep-dumps \ #if you are planning on creating .ply afterwards
+      --display
+  done
+  ```
 
 ## Exporting a PLY from a finished run
 
@@ -194,6 +210,15 @@ of interest with `--keep-dumps` (or set `SLAM_SWEEP_KEEP_DUMPS=1`), then:
 ```bash
 slam-sweep export-ply --rep-dir runs/<run_id>/rep_00 --out map.ply
 slam-sweep export-ply --rep-dir runs/<run_id>/rep_00 --out map.ply --voxel-size 0.05
+
+#or for several run-once
+for rep_dir in ~/glim_sweep/runs/local-2026052*/rep_*/; do
+  run_id=$(basename $(dirname "$rep_dir"))
+  rep=$(basename "$rep_dir")
+  slam-sweep export-ply \
+  --rep-dir "$rep_dir" \
+  --out ~/glim_sweep/exports/${run_id}_${rep}.ply
+done
 ```
 
 This reads the dumped submap PLYs on the host and concatenates them with

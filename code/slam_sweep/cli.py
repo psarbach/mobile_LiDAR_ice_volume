@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import glob
 import json
+import os
 import sys
 import time
 from pathlib import Path
+
+import numpy as np
 
 import click
 
@@ -105,9 +108,12 @@ def run_once(bag_str, default_config_str, runs_root, image, reps,
               help="Keep the full GLIM dump (large) per rep.")
 @click.option("--display/--no-display", default=False, show_default=True,
               help="Forward $DISPLAY + X11 socket into the container.")
+@click.option("--tags", default="", show_default=False,
+              help="Extra W&B tags, comma-separated (e.g. 'outdoor,building_A'). "
+                   "The bag filename stem is always added automatically.")
 def optuna_run(bag_str, default_config_str, wandb_project, wandb_entity, runs_root,
                image, reps, timeout_s, n_trials, study_name,
-               failure_penalty_m, runaway_threshold_m, keep_dumps, display):
+               failure_penalty_m, runaway_threshold_m, keep_dumps, display, tags):
     """Run a conditional Bayesian sweep with Optuna (TPE sampler) + W&B logging."""
     import argparse
     from .optuna_agent import run_study
@@ -127,6 +133,7 @@ def optuna_run(bag_str, default_config_str, wandb_project, wandb_entity, runs_ro
         runaway_threshold_m=runaway_threshold_m,
         keep_dumps=keep_dumps,
         use_display=display,
+        tags=[t.strip() for t in tags.split(",") if t.strip()],
     )
     run_study(args)
 
@@ -135,30 +142,40 @@ def optuna_run(bag_str, default_config_str, wandb_project, wandb_entity, runs_ro
 # slam-sweep export-ply
 # -----------------------------------------------------------------------------
 
+def _parse_data_txt(file_path):
+    """Extract T_world_origin matrix from a GLIM submap data.txt."""
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if "T_world_origin:" in line:
+            matrix_lines = lines[i + 1:i + 5]
+            values = [float(x) for row in matrix_lines for x in row.split()]
+            return np.array(values).reshape(4, 4)
+    return np.eye(4)
+
+
+def _save_ply(filename, points, intensities):
+    """Write a binary little-endian PLY with x, y, z, intensity."""
+    n = len(points)
+    header = (
+        f"ply\nformat binary_little_endian 1.0\n"
+        f"element vertex {n}\n"
+        f"property float x\nproperty float y\nproperty float z\n"
+        f"property float intensity\nend_header\n"
+    ).encode()
+    data = np.column_stack((points, intensities)).astype(np.float32)
+    with open(filename, 'wb') as f:
+        f.write(header)
+        f.write(data.tobytes())
+
+
 @main.command("export-ply")
 @click.option("--rep-dir", type=click.Path(exists=True, file_okay=False), required=True,
               help="A `runs/<run_id>/rep_NN` directory containing an `output/` dump.")
 @click.option("--out", "out_path", type=click.Path(dir_okay=False), required=True,
               help="Output PLY path.")
-@click.option("--voxel-size", type=float, default=None,
-              help="Optional voxel-grid downsample size (m). Skip for full resolution.")
-def export_ply(rep_dir, out_path, voxel_size):
-    """
-    Build a single PLY point cloud from a kept GLIM dump.
-
-    GLIM's `dump_path` stores per-submap point clouds (`*.ply`). The
-    optimized poses are already baked into each submap cloud at dump
-    time, so concatenation is sufficient — no graph re-application
-    needed for a static map output.
-
-    Runs on the host. Open3D must be installed in the orchestrator's
-    Python environment (`pip install open3d`).
-    """
-    try:
-        import open3d as o3d
-    except ImportError:
-        sys.exit("Open3D not installed. `pip install open3d` in the orchestrator's venv.")
-
+def export_ply(rep_dir, out_path):
+    """Build a PLY point cloud from a kept GLIM dump."""
     rep_dir = Path(rep_dir).resolve()
     out_path = Path(out_path).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -166,34 +183,45 @@ def export_ply(rep_dir, out_path, voxel_size):
     output_dir = rep_dir / "output"
     if not output_dir.is_dir():
         sys.exit(f"No GLIM dump found at {output_dir}. "
-                 f"Re-run the trial with --keep-dumps to preserve it.")
+                 f"Re-run with --keep-dumps to preserve it.")
 
-    ply_files = sorted(glob.glob(str(output_dir / "**" / "*.ply"), recursive=True))
-    if not ply_files:
-        sys.exit(f"No .ply files found under {output_dir}.")
+    submap_dirs = sorted(glob.glob(str(output_dir / ("[0-9]" * 6))))
+    if not submap_dirs:
+        sys.exit(f"No submap directories found under {output_dir}.")
 
-    click.echo(f"Reading {len(ply_files)} submap cloud(s)...")
-    merged = o3d.geometry.PointCloud()
-    total = 0
-    for p in ply_files:
-        pcd = o3d.io.read_point_cloud(p)
-        n = len(pcd.points)
-        if n == 0:
+    click.echo(f"Found {len(submap_dirs)} submap(s), reading...")
+
+    all_points = []
+    all_intensities = []
+
+    for subdir in submap_dirs:
+        data_path   = os.path.join(subdir, "data.txt")
+        points_path = os.path.join(subdir, "points_compact.bin")
+        inten_path  = os.path.join(subdir, "intensities_compact.bin")
+
+        if not (os.path.exists(data_path) and os.path.exists(points_path)):
             continue
-        merged += pcd
-        total += n
 
-    if total == 0:
-        sys.exit("All dump PLYs were empty.")
+        T = _parse_data_txt(data_path)
+        points = np.fromfile(points_path, dtype=np.float32).reshape(-1, 3)
+        intensities = (np.fromfile(inten_path, dtype=np.float32)
+                       if os.path.exists(inten_path)
+                       else np.zeros(len(points), dtype=np.float32))
 
-    click.echo(f"Concatenated: {total:,} points")
+        homog = np.hstack([points, np.ones((len(points), 1))])
+        transformed = (T @ homog.T).T[:, :3]
 
-    if voxel_size is not None and voxel_size > 0:
-        before = len(merged.points)
-        merged = merged.voxel_down_sample(voxel_size)
-        click.echo(f"Voxel-downsampled @ {voxel_size} m: {before:,} -> {len(merged.points):,}")
+        all_points.append(transformed)
+        all_intensities.append(intensities)
 
-    o3d.io.write_point_cloud(str(out_path), merged, write_ascii=False)
+    if not all_points:
+        sys.exit(f"No valid submap data found in {output_dir}.")
+
+    final_points = np.concatenate(all_points, axis=0)
+    final_intensities = np.concatenate(all_intensities, axis=0)
+
+    click.echo(f"Writing {len(final_points):,} points to {out_path}...")
+    _save_ply(str(out_path), final_points, final_intensities)
     click.echo(f"Wrote {out_path}")
 
 

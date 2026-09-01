@@ -138,12 +138,14 @@ def objective(trial: optuna.Trial, args: argparse.Namespace) -> float:
 
     glim_params, wandb_params = suggest_params(trial)
 
+    bag_stem = Path(args.bag).stem
+    all_tags = ["optuna", args.study_name, bag_stem] + list(getattr(args, "tags", []))
     run = wandb.init(
         project=args.wandb_project,
         entity=args.wandb_entity or None,
-        config=wandb_params,
+        config={"dataset": bag_stem, **wandb_params},
         reinit=True,
-        tags=["optuna", args.study_name],
+        tags=all_tags,
     )
     run_id = wandb.run.id if wandb.run is not None else time.strftime("optuna-%Y%m%d-%H%M%S")
 
