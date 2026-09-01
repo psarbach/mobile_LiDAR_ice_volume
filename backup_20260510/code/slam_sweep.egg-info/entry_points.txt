@@ -1,2 +1,0 @@
-[console_scripts]
-slam-sweep = slam_sweep.cli:main
